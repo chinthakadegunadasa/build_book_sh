@@ -1,16 +1,19 @@
-name: Build Universal KDP Book
+name: Universal KDP Book Builder
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
     inputs:
       book_title:
         description: 'Book Title'
-        required: false
+        required: true
         default: 'The Ultimate DevOps Practitioner\'s Handbook'
+        type: string
+      book_repo_url:
+        description: 'Git Repository URL containing .md files (optional)'
+        required: false
+        default: ''
         type: string
       build_profile:
         description: 'Build Profile (kdp or draft)'
@@ -23,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Build Engine Repository
         uses: actions/checkout@v4
 
       - name: Set up Python 3.10
@@ -41,6 +44,7 @@ jobs:
             pdftk-java \
             poppler-utils \
             fontconfig \
+            git \
             ttf-mscorefonts-installer
           sudo fc-cache -f -v
 
@@ -49,32 +53,26 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install --no-cache-dir python-docx Pillow uno
 
-      - name: Run KDP Build Script
+      - name: Execute Universal KDP Build Script
         env:
           BOOK_TITLE: "${{ github.event.inputs.book_title || 'The Ultimate DevOps Practitioner\'s Handbook' }}"
+          BOOK_REPO_URL: "${{ github.event.inputs.book_repo_url }}"
           BUILD_PROFILE: "${{ github.event.inputs.build_profile || 'kdp' }}"
           OUTPUT_FORMAT: "all"
         run: |
           chmod +x build_book.sh
-          ./build_book.sh --profile "${{ env.BUILD_PROFILE }}" --format all
+          ARGS=(--profile "${{ env.BUILD_PROFILE }}" --format all)
+          if [ -n "${{ env.BOOK_REPO_URL }}" ]; then
+            ARGS+=(--repo "${{ env.BOOK_REPO_URL }}")
+          fi
+          ./build_book.sh "${ARGS[@]}"
 
-      - name: Upload KDP Publication Artifacts
+      - name: Upload KDP Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kdp-book-artifacts
+          name: kdp-publication-bundle
           path: |
             *.pdf
             *.docx
             *.epub
             build_report.txt
-            
-      - name: Create GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            *.pdf
-            *.docx
-            *.epub
-            build_report.txt
-          generate_release_notes: true
